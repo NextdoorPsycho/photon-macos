@@ -130,14 +130,82 @@ uniform float biome_may_snow;
 #include "/include/sky/sky.glsl"
 
 #ifdef PHOTON_SKY_SH_FRAGMENT_FALLBACK
+#include "/include/utility/sampling.glsl"
+
+// Native macOS cannot run Photon's compute SH reduction. Approximate the same
+// colortex4 SH rows from a tiny number of sky-map fragments instead.
+const int photon_sky_sh_fallback_samples = 64;
+
+float photon_sky_sh_coeff(int band, vec3 direction) {
+    float x = direction.x;
+    float y = direction.y;
+    float z = direction.z;
+
+    switch (band) {
+        case 0:
+            return 0.2820947918;
+        case 1:
+            return 0.4886025119 * x;
+        case 2:
+            return 0.4886025119 * z;
+        case 3:
+            return 0.4886025119 * y;
+        case 4:
+            return 1.0925484310 * x * y;
+        case 5:
+            return 1.0925484310 * y * z;
+        case 6:
+            return 0.3153915653 * (3.0 * z * z - 1.0);
+        case 7:
+            return 0.7725484040 * x * z;
+        case 8:
+            return 0.3862742020 * (x * x - y * y);
+    }
+
+    return 0.0;
+}
+
+vec3 photon_draw_sky_for_sh(vec3 ray_dir) {
+    vec3 result = draw_sky(ray_dir);
+
+#if defined WORLD_OVERWORLD
+    mat2x3 fog = air_fog_analytic(
+        cameraPosition,
+        cameraPosition + ray_dir,
+        true,
+        eye_skylight,
+        1.0
+    );
+    result = result * fog[1] + fog[0];
+#endif
+
+    return result;
+}
+
 vec3 photon_generate_sky_sh_band(int band) {
-    if (band == 0) return ambient_color * 0.5641895835;
-    if (band == 3) return ambient_color * 0.4886025119;
-    return vec3(0.0);
+    vec3 sum = vec3(0.0);
+    float skylight_boost = get_skylight_boost();
+
+    for (int i = 0; i < photon_sky_sh_fallback_samples; ++i) {
+        vec3 direction = uniform_hemisphere_sample(vec3(0.0, 1.0, 0.0), r2(i));
+        vec3 radiance = photon_draw_sky_for_sh(direction) * skylight_boost;
+        sum += radiance * photon_sky_sh_coeff(band, direction);
+    }
+
+    return sum * (tau / float(photon_sky_sh_fallback_samples));
 }
 
 vec3 photon_generate_sky_irradiance_up() {
-    return ambient_color;
+    vec3 sum = vec3(0.0);
+    float skylight_boost = get_skylight_boost();
+
+    for (int i = 0; i < photon_sky_sh_fallback_samples; ++i) {
+        vec3 direction = uniform_hemisphere_sample(vec3(0.0, 1.0, 0.0), r2(i));
+        vec3 radiance = photon_draw_sky_for_sh(direction) * skylight_boost;
+        sum += radiance * max0(direction.y);
+    }
+
+    return sum * (tau / float(photon_sky_sh_fallback_samples));
 }
 #endif
 
