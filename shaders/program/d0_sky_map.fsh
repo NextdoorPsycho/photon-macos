@@ -11,6 +11,10 @@
 
 #include "/include/global.glsl"
 
+#if defined WORLD_OVERWORLD && defined PROGRAM_DEFERRED0 && defined SH_SKYLIGHT && !defined PHOTON_HAS_COMPUTE
+#define PHOTON_SKY_SH_FRAGMENT_FALLBACK
+#endif
+
 layout(location = 0) out vec3 sky_map;
 
 /* RENDERTARGETS: 4 */
@@ -125,6 +129,18 @@ uniform float biome_may_snow;
 #include "/include/sky/projection.glsl"
 #include "/include/sky/sky.glsl"
 
+#ifdef PHOTON_SKY_SH_FRAGMENT_FALLBACK
+vec3 photon_generate_sky_sh_band(int band) {
+    if (band == 0) return ambient_color * 0.5641895835;
+    if (band == 3) return ambient_color * 0.4886025119;
+    return vec3(0.0);
+}
+
+vec3 photon_generate_sky_irradiance_up() {
+    return ambient_color;
+}
+#endif
+
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
 
@@ -138,6 +154,48 @@ void main() {
             case 1:
                 sky_map = ambient_color;
                 break;
+
+#ifdef PHOTON_SKY_SH_FRAGMENT_FALLBACK
+            case 2:
+                sky_map = photon_generate_sky_sh_band(0);
+                break;
+
+            case 3:
+                sky_map = photon_generate_sky_sh_band(1);
+                break;
+
+            case 4:
+                sky_map = photon_generate_sky_sh_band(2);
+                break;
+
+            case 5:
+                sky_map = photon_generate_sky_sh_band(3);
+                break;
+
+            case 6:
+                sky_map = photon_generate_sky_sh_band(4);
+                break;
+
+            case 7:
+                sky_map = photon_generate_sky_sh_band(5);
+                break;
+
+            case 8:
+                sky_map = photon_generate_sky_sh_band(6);
+                break;
+
+            case 9:
+                sky_map = photon_generate_sky_sh_band(7);
+                break;
+
+            case 10:
+                sky_map = photon_generate_sky_sh_band(8);
+                break;
+
+            case 11:
+                sky_map = photon_generate_sky_irradiance_up();
+                break;
+#endif
         }
     } else { // Draw sky map
         vec3 ray_dir = unproject_sky(uv);

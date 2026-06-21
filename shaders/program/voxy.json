@@ -7,9 +7,13 @@
             // include it directly into the JSON as it would cause syntax errors, so it is
             // wrapped in a unused string field.
             #include "/settings.glsl"
-        ",
+    ",
     "version": 1,
     "excludeLodsFromVanillaDepth": true,
+#ifdef MC_OS_MAC
+    "opaqueDrawBuffers": [],
+    "translucentDrawBuffers": [],
+#else
     "opaqueDrawBuffers": [
         1
     ],
@@ -21,6 +25,7 @@
         -1 : "off",
         0 : "ONE ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA"
     },
+#endif
 #ifdef TAA
     "taaOffset": "{ 
         #ifdef TAAU
@@ -86,4 +91,3 @@
         "depthtex1"
     ]
 }
-

@@ -16,6 +16,10 @@
 #endif
 */
 
+#if !defined MC_OS_MAC && (MC_GL_VERSION >= 430 || defined MC_GL_ARB_compute_shader)
+#define PHOTON_HAS_COMPUTE
+#endif
+
 #ifdef HAS_F16
 #define f16 float16_t
 #else
@@ -52,9 +56,13 @@
 
 #include "/settings.glsl"
 
+#ifdef MC_OS_MAC
+#undef COLORED_LIGHTS
+#endif
+
 // Photonics shorthand, 'PHOTONICS' is always defined by Photonics when it's
 // installed
-#if defined PHOTONICS && defined PHOTONICS_ENABLED
+#if defined PHOTONICS && defined PHOTONICS_ENABLED && !defined MC_OS_MAC
 #define PHOTONICS_IN_USE
 #endif
 
