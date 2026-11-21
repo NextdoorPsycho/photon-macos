@@ -114,7 +114,7 @@ vec3 get_lpv_fog_scattering(
     // Clip ray length to voxel volume
     vec3 origin_to_center
         = get_voxel_volume_center(gbufferModelViewInverse[2].xyz);
-    float distance_center_to_edge = 0.5 * float(VOXEL_VOLUME_SIZE)
+    float distance_center_to_edge = 0.5 * float(voxel_volume_size.x)
         * rcp(max_of(abs(ray_direction_world)));
     ray_length = min(
         ray_length,

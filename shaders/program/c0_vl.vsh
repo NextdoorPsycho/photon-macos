@@ -77,6 +77,8 @@ void main() {
     fog_params = get_fog_parameters(get_weather());
 #endif
 
-    vec2 vertex_pos = gl_Vertex.xy;
+    // The fog buffers are half the size of the view. With render scaling
+    // only their lower left corner is used, like the full-size buffers
+    vec2 vertex_pos = gl_Vertex.xy * taau_render_scale;
     gl_Position = vec4(vertex_pos * 2.0 - 1.0, 0.0, 1.0);
 }

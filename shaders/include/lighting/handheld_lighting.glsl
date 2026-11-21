@@ -1,7 +1,15 @@
 #ifndef INCLUDE_LIGHTING_HANDHELD_LIGHTING
 #define INCLUDE_LIGHTING_HANDHELD_LIGHTING
 
-#ifdef COLORED_LIGHTS
+#ifdef PHOTON_LPV_ATLAS
+// The table is included under another name: shading programs already have a
+// `light_color` of their own
+#define light_color lpv_light_color
+#define tint_color lpv_tint_color
+#include "/include/lighting/lpv/light_colors.glsl"
+#undef light_color
+#undef tint_color
+#elif defined COLORED_LIGHTS
 uniform sampler2D light_data_sampler;
 #endif
 
@@ -19,12 +27,16 @@ vec3 get_handheld_light_color(int held_item_id, int held_item_light_value) {
     bool is_emitter = 10032 <= held_item_id && held_item_id < 10080;
 
     if (is_emitter) {
+#ifdef PHOTON_LPV_ATLAS
+        return lpv_light_color[held_item_id - 10032];
+#else
         return texelFetch(
                    light_data_sampler,
                    ivec2(int(held_item_id) - 10032, 0),
                    0
         )
             .rgb;
+#endif
     } else {
         return vec3(0.0);
     }
@@ -46,14 +58,14 @@ vec3 get_handheld_lighting(vec3 scene_pos, float ao) {
     scene_pos += relativeEyePosition;
 #endif
 
-    vec3 light_color = max(
-        get_handheld_light_color(heldItemId, heldBlockLightValue),
-        get_handheld_light_color(heldItemId2, heldBlockLightValue2)
-    );
+    // Sum the two hands so that two differently colored items both show
+    vec3 handheld_color
+        = get_handheld_light_color(heldItemId, heldBlockLightValue)
+        + get_handheld_light_color(heldItemId2, heldBlockLightValue2);
 
     float falloff = get_handheld_light_falloff(scene_pos, ao);
 
-    return light_color * falloff;
+    return handheld_color * falloff;
 }
 
 #endif // INCLUDE_LIGHTING_HANDHELD_LIGHTING

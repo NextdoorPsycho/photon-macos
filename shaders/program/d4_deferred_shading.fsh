@@ -69,8 +69,14 @@ uniform sampler3D depthtex0; // atmosphere scattering LUT
 uniform sampler2D depthtex1;
 
 #ifdef COLORED_LIGHTS
+#ifdef PHOTON_LPV_ATLAS
+uniform sampler2D colortex17; // light atlas
+// The atlas texture also holds the cloud shadow map (see lpv/atlas.glsl)
+#define colortex8 colortex17
+#else
 uniform sampler3D light_sampler_a;
 uniform sampler3D light_sampler_b;
+#endif
 #endif
 
 #ifdef BLOCKY_CLOUDS
@@ -308,7 +314,7 @@ void main() {
     } else { // Terrain
         // Sample ambient occlusion a while before using it (latency hiding)
 
-        vec2 half_res_pos = gl_FragCoord.xy * (0.5 / taau_render_scale) - 0.5;
+        vec2 half_res_pos = gl_FragCoord.xy * 0.5 - 0.5;
 
         ivec2 i = ivec2(half_res_pos);
         vec2 f = fract(half_res_pos);
@@ -316,6 +322,13 @@ void main() {
         ivec2 p10 = i + ivec2(1, 0);
         ivec2 p01 = i + ivec2(0, 1);
         ivec2 p11 = i + ivec2(1, 1);
+#ifdef TAAU
+        // The ambient buffers end where the rendered corner ends
+        ivec2 ambient_max = ivec2(view_res * (0.5 * taau_render_scale)) - 1;
+        p10 = min(p10, ambient_max);
+        p01 = min(p01, ambient_max);
+        p11 = min(p11, ambient_max);
+#endif
 
         vec4 ambient_00 = texelFetch(colortex6, i, 0);
         vec4 ambient_10 = texelFetch(colortex6, p10, 0);
@@ -498,6 +511,13 @@ void main() {
                 shadow_distance_fade,
                 sss_depth_near
             );
+#endif
+
+#if defined PHOTON_LPV_ATLAS && defined WORLD_OVERWORLD
+            // On some frames the shadow map lacks the faces that point away
+            // from the light (see redirect_to_voxel_atlas()), which lets a
+            // low sun into caves. No skylight, no sun
+            shadow_near *= get_lightmap_light_leak_prevention(light_levels.y);
 #endif
 
             // Calculate distant shadows

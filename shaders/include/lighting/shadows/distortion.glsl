@@ -6,6 +6,37 @@
 // Euclidian distance is defined as sqrt(a^2 + b^2 + ...). This function instead
 // does quartic_root(a^4 + b^4 + ...). This results in smaller distances along
 // the diagonal axes
+// On the atlas path (see lpv/atlas.glsl) the right-hand strip of the shadow map
+// holds the voxel atlas, and the shadow projection only fills the square
+// region to its left. Shadow UVs keep meaning "0 to 1 across the projection":
+// texel lookups multiply by shadow_region_res, filtered lookups by
+// shadow_region_scale
+#ifdef PHOTON_LPV_ATLAS
+#include "/include/lighting/lpv/atlas_size.glsl"
+
+const int shadow_region_res = shadowMapResolution - 8 * lpv_atlas_n;
+#else
+const int shadow_region_res = shadowMapResolution;
+#endif
+const float shadow_region_scale
+    = float(shadow_region_res) / float(shadowMapResolution);
+
+// Depth of the nearest shadow caster, translucent ones included. Programs
+// that undefine SHADOW_COLOR have no shadowcolor0 and keep using shadowtex0
+#if defined PHOTON_SHADOW_DEPTH0_IN_COLOR && defined SHADOW_COLOR
+// Alpha 0 is the cleared value: nothing was drawn there
+float unpack_shadow_depth0(float alpha) { return alpha == 0.0 ? 1.0 : alpha; }
+#define read_shadow_depth0(texel)                                              \
+    unpack_shadow_depth0(texelFetch(shadowcolor0, texel, 0).a)
+#else
+#define read_shadow_depth0(texel) texelFetch(shadowtex0, texel, 0).x
+#endif
+
+// Moves clip-space XY from the whole shadow map into the shadow region
+vec2 shadow_clip_to_region(vec2 shadow_clip_pos) {
+    return shadow_clip_pos * shadow_region_scale + (shadow_region_scale - 1.0);
+}
+
 float quartic_length(vec2 v) { return sqrt(sqrt(pow4(v.x) + pow4(v.y))); }
 
 float get_distortion_factor(vec2 shadow_clip_pos) {

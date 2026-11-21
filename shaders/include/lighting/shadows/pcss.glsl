@@ -23,7 +23,7 @@ const ivec2[9] blur_kernel_offsets_3x3 = ivec2[9](
     ivec2(1, 1)
 );
 
-const int shadow_map_res = int(float(shadowMapResolution) * MC_SHADOW_QUALITY);
+const int shadow_map_res = int(float(shadow_region_res) * MC_SHADOW_QUALITY);
 const float shadow_map_pixel_size = rcp(float(shadow_map_res));
 
 vec2 blocker_search(vec3 scene_pos, float dither, bool has_sss) {
@@ -46,7 +46,7 @@ vec2 blocker_search(vec3 scene_pos, float dither, bool has_sss) {
         uv /= get_distortion_factor(uv);
         uv = uv * 0.5 + 0.5;
 
-        float depth = texelFetch(shadowtex0, ivec2(uv * shadow_map_res), 0).x;
+        float depth = read_shadow_depth0(ivec2(uv * shadow_map_res));
         float weight = step(depth, ref_z);
 
         depth_sum += weight * depth;
@@ -62,12 +62,15 @@ vec2 blocker_search(vec3 scene_pos, float dither, bool has_sss) {
 }
 
 vec3 shadow_basic(vec3 shadow_screen_pos) {
-    float shadow = texture(shadowtex1, shadow_screen_pos);
+    float shadow = texture(
+        shadowtex1,
+        vec3(shadow_screen_pos.xy * shadow_region_scale, shadow_screen_pos.z)
+    );
 
 #ifdef SHADOW_COLOR
     ivec2 texel = ivec2(shadow_screen_pos.xy * shadow_map_res);
 
-    float depth = texelFetch(shadowtex0, texel, 0).x;
+    float depth = read_shadow_depth0(texel);
     vec3 color = texelFetch(shadowcolor0, texel, 0).rgb * 4.0;
     float weight = step(depth, shadow_screen_pos.z);
 
@@ -124,7 +127,10 @@ vec3 shadow_pcf(
         uv /= get_distortion_factor(uv);
         uv = uv * 0.5 + 0.5;
 
-        shadow += texture(shadowtex1, vec3(uv, shadow_screen_pos.z));
+        shadow += texture(
+            shadowtex1,
+            vec3(uv * shadow_region_scale, shadow_screen_pos.z)
+        );
 
 #ifdef SHADOW_COLOR
         // sample shadow color
@@ -134,7 +140,7 @@ vec3 shadow_pcf(
 
         ivec2 texel = ivec2(uv * shadow_map_res);
 
-        float depth = texelFetch(shadowtex0, texel, 0).x;
+        float depth = read_shadow_depth0(texel);
 
         vec3 color = texelFetch(shadowcolor0, texel, 0).rgb;
         color = mix(
@@ -168,7 +174,10 @@ vec3 shadow_pcf(
         uv /= get_distortion_factor(uv);
         uv = uv * 0.5 + 0.5;
 
-        shadow += texture(shadowtex1, vec3(uv, shadow_screen_pos.z));
+        shadow += texture(
+            shadowtex1,
+            vec3(uv * shadow_region_scale, shadow_screen_pos.z)
+        );
     }
 
     float rcp_steps = rcp(float(step_count));

@@ -16,7 +16,11 @@ layout(
 ) out vec4 ambient; // ao, ambient SSS, octahedrally encoded bent normal
 layout(location = 1) out vec2 ambient_history_data; // depth, pixel age
 
-/* RENDERTARGETS: 6,14 */
+// Second write of last frame's fog scattering, unchanged (see Buffer Flips in
+// shaders.properties)
+layout(location = 2) out vec3 fog_scattering_history;
+
+/* RENDERTARGETS: 6,14,7 */
 
 in vec2 uv;
 
@@ -29,6 +33,7 @@ uniform sampler2D noisetex;
 uniform sampler2D colortex1; // gbuffer 0
 uniform sampler2D colortex2; // gbuffer 1
 uniform sampler2D colortex6; // ambient lighting data
+uniform sampler2D colortex7; // previous frame fog scattering
 uniform sampler2D colortex14; // ambient lighting history data
 
 uniform sampler2D depthtex1;
@@ -85,8 +90,9 @@ const float ao_render_scale = 0.5;
 
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
-    ivec2 view_texel
-        = ivec2(gl_FragCoord.xy * (taau_render_scale / ao_render_scale));
+    ivec2 view_texel = ivec2(gl_FragCoord.xy * rcp(ao_render_scale));
+
+    fog_scattering_history = texelFetch(colortex7, texel, 0).rgb;
 
     if (clamp(view_texel, ivec2(0), ivec2(view_res)) != view_texel) {
         return;
@@ -180,10 +186,15 @@ void main() {
     const float depth_rejection_strength = 16.0;
     const float offcenter_rejection_strength = 0.25;
 
-    vec4 history = max0(
-        catmull_rom_filter_fast(colortex6, previous_screen_pos.xy, 0.65)
-    );
-    vec2 history_data = max0(texture(colortex14, previous_screen_pos.xy).xy);
+    vec2 history_uv = previous_screen_pos.xy * taau_render_scale;
+#ifdef TAAU
+    // Keep the filter taps inside the rendered corner of the buffer
+    history_uv = min(history_uv, taau_render_scale - 4.0 * view_pixel_size);
+#endif
+
+    vec4 history
+        = max0(catmull_rom_filter_fast(colortex6, history_uv, 0.65));
+    vec2 history_data = max0(texture(colortex14, history_uv).xy);
 
     if (clamp01(previous_screen_pos.xy) == previous_screen_pos.xy) {
         // Unpack history data
@@ -221,7 +232,8 @@ void main() {
         vec2 pixel_offset = 1.0
             - abs(2.0
                       * fract(
-                          view_res * ao_render_scale * previous_screen_pos.xy
+                          view_res * ao_render_scale * taau_render_scale
+                          * previous_screen_pos.xy
                       )
                   - 1.0);
         float offcenter_rejection = sqrt(pixel_offset.x * pixel_offset.y)

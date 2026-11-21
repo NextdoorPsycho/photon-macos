@@ -126,6 +126,43 @@ uniform float biome_may_snow;
 #include "/include/sky/projection.glsl"
 #include "/include/sky/sky.glsl"
 
+#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT && defined PHOTON_NO_COMPUTE
+// Sky SH without the compute shader (program/d4a_generate_sky_sh.csh). The
+// same integral is taken here, per output texel, over last frame's sky map
+#define SKY_SH_IN_FRAGMENT
+
+uniform sampler2D colortex4;
+
+#include "/include/lighting/colors/light_color.glsl"
+#include "/include/utility/random.glsl"
+#include "/include/utility/sampling.glsl"
+#include "/include/utility/spherical_harmonics.glsl"
+
+// Returns the nine order 2 coefficients, three per matrix column
+mat3[3] integrate_sky_sh() {
+    const int sample_count = 256;
+
+    mat3[3] sh = mat3[3](mat3(0.0), mat3(0.0), mat3(0.0));
+
+    for (int i = 0; i < sample_count; ++i) {
+        vec3 direction
+            = uniform_hemisphere_sample(vec3(0.0, 1.0, 0.0), r2(i));
+        vec3 radiance = texture(colortex4, project_sky(direction)).rgb;
+        mat3 coeff = sh_coeff_order_2(direction);
+
+        for (int band = 0; band < 3; ++band) {
+            sh[0][band] += radiance * coeff[0][band];
+            sh[1][band] += radiance * coeff[1][band];
+            sh[2][band] += radiance * coeff[2][band];
+        }
+    }
+
+    float scale = get_skylight_boost() * (tau / float(sample_count));
+
+    return mat3[3](sh[0] * scale, sh[1] * scale, sh[2] * scale);
+}
+#endif
+
 void main() {
 #if defined WORLD_OVERWORLD
     aurora_amount = aurora_data[0].w;
@@ -146,6 +183,22 @@ void main() {
                 sky_map = ambient_color;
                 break;
         }
+
+#ifdef SKY_SH_IN_FRAGMENT
+        // Same texels as d4a_generate_sky_sh.csh: 2..10 hold the SH
+        // coefficients, 11 the irradiance facing up
+        if (texel.y >= 2 && texel.y <= 11) {
+            mat3[3] coeff = integrate_sky_sh();
+
+            if (texel.y == 11) {
+                sh3 sh = sh3(coeff[0], coeff[1], coeff[2]);
+                sky_map = sh_evaluate_irradiance(sh, vec3(0.0, 1.0, 0.0), 1.0);
+            } else {
+                int band = texel.y - 2;
+                sky_map = coeff[band / 3][band % 3];
+            }
+        }
+#endif
     } else { // Draw sky map
         vec3 ray_dir = unproject_sky(uv);
 

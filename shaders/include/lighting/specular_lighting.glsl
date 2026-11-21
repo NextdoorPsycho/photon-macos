@@ -256,7 +256,14 @@ vec3 trace_specular_ray(
 
         vec3 reflection = textureLod(colortex5, hit_uv_prev, mip_level).rgb;
 
-        vec3 fog_scattering_previous = texture(colortex7, hit_uv_prev).rgb;
+#if defined PHOTON_NO_COMPUTE && defined GALAXY
+        // The galaxy texture takes the last texture unit, so the fog already
+        // in the reflected color stays in it
+        const vec3 fog_scattering_previous = vec3(0.0);
+#else
+        vec3 fog_scattering_previous
+            = texture(colortex7, hit_uv_prev * taau_render_scale).rgb;
+#endif
 
 #if defined WORLD_OVERWORLD
 #ifdef VL

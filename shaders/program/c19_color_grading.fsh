@@ -13,7 +13,11 @@
 
 layout(location = 0) out vec3 scene_color;
 
-/* RENDERTARGETS: 0 */
+// Second write of the scene history, unchanged (see Buffer Flips in
+// shaders.properties)
+layout(location = 1) out vec4 scene_history;
+
+/* RENDERTARGETS: 0,5 */
 
 in vec2 uv;
 
@@ -147,7 +151,8 @@ float vignette(vec2 uv) {
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
 
-    scene_color = texelFetch(colortex5, texel, 0).rgb;
+    scene_history = texelFetch(colortex5, texel, 0);
+    scene_color = scene_history.rgb;
 
     float exposure = texelFetch(colortex5, ivec2(0), 0).a;
 

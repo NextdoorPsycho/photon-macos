@@ -20,6 +20,12 @@ flat out vec3 tint;
 out vec3 scene_pos;
 #endif
 
+#ifdef SHADOW_VOXEL_REDIRECT
+// Set for quads moved to the voxel atlas, see redirect_to_voxel_atlas()
+flat out int voxel_id;
+out float voxel_full;
+#endif
+
 // --------------
 //   Attributes
 // --------------
@@ -65,9 +71,15 @@ uniform float biome_temperature;
 uniform float biome_humidity;
 
 #ifdef COLORED_LIGHTS
+#ifndef PHOTON_LPV_ATLAS
 writeonly uniform uimage3D voxel_img;
+#endif
 
 uniform int renderStage;
+#endif
+
+#ifdef SHADOW_VOXEL_REDIRECT
+uniform int frameCounter;
 #endif
 
 // ------------
@@ -77,7 +89,9 @@ uniform int renderStage;
 #include "/include/lighting/shadows/distortion.glsl"
 #include "/include/vertex/displacement.glsl"
 
-#ifdef COLORED_LIGHTS
+#if defined PHOTON_LPV_ATLAS
+#include "/include/lighting/lpv/atlas.glsl"
+#elif defined COLORED_LIGHTS
 #include "/include/lighting/lpv/voxelization.glsl"
 #endif
 
@@ -86,7 +100,15 @@ void main() {
     material_mask = uint(mc_Entity.x - 10000.0);
     tint = gl_Color.rgb;
 
-#if defined COLORED_LIGHTS && !defined PROGRAM_SHADOW_ENTITIES
+#if defined SHADOW_VOXEL_REDIRECT
+    if (redirect_to_voxel_atlas(material_mask)) {
+#ifdef WATER_CAUSTICS
+        scene_pos = vec3(0.0);
+#endif
+        return;
+    }
+#elif defined COLORED_LIGHTS && !defined PHOTON_LPV_ATLAS                     \
+    && !defined PROGRAM_SHADOW_ENTITIES
     update_voxel_map(material_mask);
 #endif
 
@@ -122,6 +144,7 @@ void main() {
 
     vec3 shadow_clip_pos = project_ortho(gl_ProjectionMatrix, pos);
     shadow_clip_pos = distort_shadow_space(shadow_clip_pos);
+    shadow_clip_pos.xy = shadow_clip_to_region(shadow_clip_pos.xy);
 
     gl_Position = vec4(shadow_clip_pos, 1.0);
 }

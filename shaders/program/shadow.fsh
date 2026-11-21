@@ -11,13 +11,28 @@
 
 #include "/include/global.glsl"
 
+#if defined PHOTON_SHADOW_DEPTH0_IN_COLOR
+// Alpha carries this fragment's depth, see read_shadow_depth0()
+layout(location = 0) out vec4 shadowcolor0_packed;
+
 #if defined COLORWHEEL
+vec4 shadowcolor0_out;
+#else
+vec3 shadowcolor0_out;
+#endif
+#elif defined COLORWHEEL
 layout(location = 0) out vec4 shadowcolor0_out;
 #else
 layout(location = 0) out vec3 shadowcolor0_out;
 #endif
 
+#ifdef PHOTON_LPV_ATLAS
+layout(location = 1) out vec4 shadowcolor1_out;
+
+/* RENDERTARGETS: 0,1 */
+#else
 /* RENDERTARGETS: 0 */
+#endif
 
 in vec2 uv;
 
@@ -26,6 +41,11 @@ flat in vec3 tint;
 
 #ifdef WATER_CAUSTICS
 in vec3 scene_pos;
+#endif
+
+#ifdef SHADOW_VOXEL_REDIRECT
+flat in int voxel_id;
+in float voxel_full;
 #endif
 
 // ------------
@@ -59,6 +79,11 @@ uniform vec3 light_dir;
 
 #include "/include/surface/water_normal.glsl"
 #include "/include/utility/color.glsl"
+
+#ifdef PHOTON_LPV_ATLAS
+// For shadow_region_res
+#include "/include/lighting/shadows/distortion.glsl"
+#endif
 
 const float air_n = 1.000293; // for 0°C and 1 atm
 const float water_n = 1.333; // for 20°C
@@ -149,7 +174,40 @@ float get_water_caustics() {
 #endif
 }
 
-void main() {
+void shadow_fragment() {
+#ifdef PHOTON_LPV_ATLAS
+#ifdef SHADOW_VOXEL_REDIRECT
+    // Quad moved onto its block's texel in the voxel atlas, see
+    // redirect_to_voxel_atlas()
+    if (voxel_id != 0) {
+        bool is_full_block = voxel_full > 0.01;
+        bool is_light_emitting_block = voxel_id >= 256;
+
+        if (!is_full_block && !is_light_emitting_block) {
+            discard;
+        }
+
+        // Mark transparent light sources
+        int block_id = (voxel_id & 255) + (is_full_block ? 0 : 128);
+
+#if defined COLORWHEEL
+        shadowcolor0_out = vec4(0.0);
+#else
+        shadowcolor0_out = vec3(0.0);
+#endif
+        shadowcolor1_out = vec4(float(block_id) * rcp(255.0), 0.0, 0.0, 1.0);
+        return;
+    }
+#endif
+
+    // Keep shadow geometry out of the voxel atlas strip
+    if (any(greaterThanEqual(gl_FragCoord.xy, vec2(shadow_region_res)))) {
+        discard;
+    }
+
+    shadowcolor1_out = vec4(0.0);
+#endif
+
 #ifndef COLORWHEEL
     if (material_mask == 1) { // Water
 #if defined PROGRAM_SHADOW_WATER || defined PROGRAM_SHADOW_FALLBACK
@@ -195,5 +253,13 @@ void main() {
     outColor *= step(base_color.a, 1.0 - rcp(255.0));
 
     shadowcolor0_out = vec4(outColor, 1.0);
+#endif
+}
+
+void main() {
+    shadow_fragment();
+
+#ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
+    shadowcolor0_packed = vec4(shadowcolor0_out.rgb, gl_FragCoord.z);
 #endif
 }

@@ -70,8 +70,14 @@ uniform sampler2D colortex8; // Cloud shadow map
 uniform sampler2D depthtex1;
 
 #ifdef COLORED_LIGHTS
+#ifdef PHOTON_LPV_ATLAS
+uniform sampler2D colortex17; // light atlas
+// The atlas texture also holds the cloud shadow map (see lpv/atlas.glsl)
+#define colortex8 colortex17
+#else
 uniform sampler3D light_sampler_a;
 uniform sampler3D light_sampler_b;
+#endif
 #endif
 
 #ifdef SHADOW

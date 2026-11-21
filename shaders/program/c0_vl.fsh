@@ -14,7 +14,12 @@
 layout(location = 0) out vec3 fog_transmittance;
 layout(location = 1) out vec3 fog_scattering;
 
-/* RENDERTARGETS: 6,7 */
+// Second write of the ambient occlusion history, unchanged (see Buffer Flips
+// in shaders.properties)
+layout(location = 2) out vec4 ambient_history;
+layout(location = 3) out vec2 ambient_history_data;
+
+/* RENDERTARGETS: 18,7,6,14 */
 
 in vec2 uv;
 
@@ -36,6 +41,8 @@ uniform sampler3D colortex0; // 3D worley noise
 uniform sampler2D colortex1; // gbuffer data
 uniform sampler2D colortex3; // translucent color
 uniform sampler2D colortex4; // sky map
+uniform sampler2D colortex6; // ambient occlusion history
+uniform sampler2D colortex14; // ambient occlusion history data
 uniform sampler2D colortex8; // cloud shadow map
 
 uniform sampler2D depthtex0;
@@ -117,16 +124,23 @@ uniform float time_midnight;
 #include "/include/utility/space_conversion.glsl"
 
 #if defined LPV_VL && defined COLORED_LIGHTS
+#ifdef PHOTON_LPV_ATLAS
+uniform sampler2D colortex17; // light atlas
+#else
 uniform sampler3D light_sampler_a;
 uniform sampler3D light_sampler_b;
+#endif
 
 #include "/include/fog/lpv_fog.glsl"
 #endif
 
 void main() {
     ivec2 fog_texel = ivec2(gl_FragCoord.xy);
+
+    ambient_history = texelFetch(colortex6, fog_texel, 0);
+    ambient_history_data = texelFetch(colortex14, fog_texel, 0).xy;
     ivec2 view_texel
-        = ivec2(gl_FragCoord.xy * taau_render_scale * rcp(VL_RENDER_SCALE));
+        = ivec2(gl_FragCoord.xy * rcp(VL_RENDER_SCALE));
 
     float depth0 = texelFetch(depthtex0, view_texel, 0).x;
     float depth1 = texelFetch(depthtex1, view_texel, 0).x;

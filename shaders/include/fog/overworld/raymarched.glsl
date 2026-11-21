@@ -117,7 +117,7 @@ mat2x3 raymarch_air_fog(
 
 #if defined SHADOW && !defined PROGRAM_DEFERRED0
         ivec2 shadow_texel = ivec2(
-            shadow_screen_pos.xy * shadowMapResolution * MC_SHADOW_QUALITY
+            shadow_screen_pos.xy * shadow_region_res * MC_SHADOW_QUALITY
         );
 
 // Colored light shafts need the shadow color buffer

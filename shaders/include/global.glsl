@@ -52,6 +52,35 @@
 
 #include "/settings.glsl"
 
+// Without OpenGL 4.3 (macOS stops at 4.1) there are no compute shaders or
+// image writes. Colored lights then use 2D atlases written by the shadow pass
+// and a fragment pass (include/lighting/lpv/atlas.glsl), and the sky SH is
+// integrated in program/d0_sky_map.fsh
+#if (MC_GL_VERSION < 430 && !defined IRIS_VULKAN)
+#define PHOTON_NO_COMPUTE
+#endif
+
+#if defined COLORED_LIGHTS && defined PHOTON_NO_COMPUTE
+#define PHOTON_LPV_ATLAS
+#endif
+
+// The same drivers allow 16 textures per fragment shader, which deferred
+// shading exceeds. Two are saved: the depth of translucent shadow casters is
+// stored in shadowcolor0's alpha so shadowtex0 need not be bound, and with
+// colored lights the cloud shadow map is copied into the light atlas texture
+#if defined PHOTON_NO_COMPUTE && defined SHADOW_COLOR
+#define PHOTON_SHADOW_DEPTH0_IN_COLOR
+#endif
+
+// On the atlas path the terrain shadow programs also fill the voxel atlas: on
+// some frames the vertex shader moves quads onto their block's texel instead
+// of drawing them as shadow casters (see redirect_to_voxel_atlas())
+#if defined PHOTON_LPV_ATLAS && !defined COLORWHEEL                            \
+    && (defined PROGRAM_SHADOW_SOLID || defined PROGRAM_SHADOW_CUTOUT          \
+        || defined PROGRAM_SHADOW_WATER)
+#define SHADOW_VOXEL_REDIRECT
+#endif
+
 // Photonics shorthand, 'PHOTONICS' is always defined by Photonics when it's
 // installed
 #if defined PHOTONICS && defined PHOTONICS_ENABLED

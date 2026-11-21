@@ -7,7 +7,7 @@ const int colortex2Format  = RGBA16;         // full res    | gbuffer data 1 (so
 const int colortex3Format  = RGBA8;          // full res    | OF damage overlay/enchantment glint (solid -> d4), refraction data (translucent -> c1), bloomy fog amount (c1 -> c14)
 const int colortex4Format  = RGBA16F;        // 192x108     | sky map + light colors/sky SH (d0 -> c1)
 const int colortex5Format  = RGBA16F;        // full res    | scene history (always)
-const int colortex6Format  = RGBA16;         // quarter res | ambient occlusion history (always), fog transmittance (c0 -> c1 +flip) 
+const int colortex6Format  = RGBA16;         // quarter res | ambient occlusion history (always)
 const int colortex7Format  = RGB16F;         // quarter res | fog scattering (always)
 const int colortex8Format  = RGB8;           // 256x256     | cloud coverage map and shadow map (p0 -> c1)
 const int colortex9Format  = RGBA16F;        // clouds res  | low-res clouds (d1 -> d2)
@@ -39,6 +39,20 @@ const vec4 colortex0ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 const vec4 colortex3ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 const vec4 colortex13ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 const vec4 shadowcolor0ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+const int colortex18Format = RGBA16;         // quarter res | fog transmittance (c0 -> c1 +flip)
+const bool colortex18Clear = false;
+
+#ifdef PHOTON_LPV_ATLAS
+const int colortex17Format = RGBA16F;        // light atlas | colored light volume as 2D slices, alpha = voxel memory (prepare1 -> c0), see lpv/atlas.glsl
+const bool colortex17Clear = false;
+const int shadowcolor1Format = RGBA8;        // shadow res  | voxel atlas in the strip right of the shadow region
+const vec4 shadowcolor1ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
+#endif
+
+#ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
+const int shadowcolor0Format = RGBA16;       // shadow res  | shadow tint, alpha = depth of nearest caster (replaces shadowtex0 lookups)
+#endif
 
 #ifdef VOXY 
 // Ty Cortex for the extra color textures! 

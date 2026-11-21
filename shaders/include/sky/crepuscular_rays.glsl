@@ -97,7 +97,8 @@ vec4 draw_crepuscular_rays(
             texture(
                 cloud_shadow_map,
                 shadow_view_to_cloud_shadow_space(ray_position_shadow)
-
+                    * vec2(cloud_shadow_res)
+                    / vec2(textureSize(cloud_shadow_map, 0))
             )
                 .xy,
             vec2(0.5)

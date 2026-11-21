@@ -78,12 +78,11 @@ uniform vec2 taa_offset;
     1.0 // Increases ghosting but reduces flickering caused by aggressive
         // clipping
 
-/*
-(needed by vertex stage for auto exposure)
+// Needed by the vertex stage for auto exposure. Not inside a comment: there
+// the condition is not evaluated and the mipmaps are built every frame
 #if AUTO_EXPOSURE != AUTO_EXPOSURE_OFF
 const bool colortex0MipmapEnabled = true;
 #endif
- */
 
 vec3 min_of(vec3 a, vec3 b, vec3 c, vec3 d, vec3 f) {
     return min(a, min(b, min(c, min(d, f))));
@@ -309,6 +308,11 @@ void main() {
     // Dynamic blend weight lending equal weight to all frames in the history,
     // drastically reducing time taken to converge when upscaling
     float blend_weight = mix(0.35, 0.10, distance_factor);
+
+    // A still pixel reads its history at the texel center, so the long window
+    // costs no sharpness and lets dithered shadows settle
+    float motion = clamp01(length(velocity * view_res));
+    blend_weight = mix(0.10, blend_weight, hand ? 1.0 : motion);
     float alpha = max(1.0 / pixel_age, blend_weight);
 
 #ifndef TAAU

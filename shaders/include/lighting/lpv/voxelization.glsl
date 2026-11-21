@@ -1,7 +1,14 @@
 #if !defined INCLUDE_LIGHTING_LPV_VOXELIZATION
 #define INCLUDE_LIGHTING_LPV_VOXELIZATION
 
+#if defined PHOTON_LPV_ATLAS
+// The atlas path stores the volume in the shadow map, which caps its size
+#include "atlas_size.glsl"
+
+const ivec3 voxel_volume_size = ivec3(lpv_atlas_n);
+#else
 const ivec3 voxel_volume_size = ivec3(VOXEL_VOLUME_SIZE);
+#endif
 
 #ifdef COLORED_LIGHTS
 const float voxelDistance = 32.0;
@@ -44,7 +51,7 @@ bool is_inside_voxel_volume(vec3 voxel_pos) {
     return clamp01(voxel_pos) == voxel_pos;
 }
 
-#ifdef PROGRAM_SHADOW
+#if defined PROGRAM_SHADOW && defined vsh
 bool is_voxelized(uint block_id, bool vertex_at_grid_corner) {
     #if !defined COLORWHEEL
     bool is_terrain = any(equal(
@@ -85,20 +92,9 @@ bool is_corner(vec3 pos, float tolerance) {
     ));
 }
 
-void update_voxel_map(uint block_id) {
-    vec3 model_pos = gl_Vertex.xyz + at_midBlock * rcp(64.0);
-    vec3 view_pos = transform(gl_ModelViewMatrix, model_pos);
-    vec3 scene_pos = transform(shadowModelViewInverse, view_pos);
-    vec3 voxel_pos = scene_to_voxel_space(scene_pos);
-
-    // Work out whether this vertex is in the lower corner of the block grid
-    vec3 block_pos = transform(gl_ModelViewMatrix, gl_Vertex.xyz);
-    block_pos = transform(shadowModelViewInverse, block_pos);
-    block_pos = fract(block_pos + cameraPosition);
-    bool vertex_at_grid_corner = is_corner(block_pos, rcp(16.0) - 1e-3);
-
-    bool is_voxelized = is_voxelized(block_id, vertex_at_grid_corner);
-
+// Block ID stored in the voxel map, before transparent light sources are
+// marked
+uint get_voxel_id(uint block_id) {
     // Prevent blocks that aren't part of another category in shaders.properties
     // from being treated as air
     block_id = max(block_id, 1u);
@@ -118,6 +114,33 @@ void update_voxel_map(uint block_id) {
         block_id = 96; // light gray tint
     }
 
+    return block_id;
+}
+
+// Work out whether this vertex is in the lower corner of the block grid
+bool is_vertex_at_grid_corner() {
+    vec3 block_pos = transform(gl_ModelViewMatrix, gl_Vertex.xyz);
+    block_pos = transform(shadowModelViewInverse, block_pos);
+    block_pos = fract(block_pos + cameraPosition);
+    return is_corner(block_pos, rcp(16.0) - 1e-3);
+}
+
+vec3 get_block_voxel_pos() {
+    vec3 model_pos = gl_Vertex.xyz + at_midBlock * rcp(64.0);
+    vec3 view_pos = transform(gl_ModelViewMatrix, model_pos);
+    vec3 scene_pos = transform(shadowModelViewInverse, view_pos);
+    return scene_to_voxel_space(scene_pos);
+}
+
+#if !defined PHOTON_LPV_ATLAS
+void update_voxel_map(uint block_id) {
+    vec3 voxel_pos = get_block_voxel_pos();
+
+    bool vertex_at_grid_corner = is_vertex_at_grid_corner();
+    bool is_voxelized = is_voxelized(block_id, vertex_at_grid_corner);
+
+    block_id = get_voxel_id(block_id);
+
     // Mark transparent light sources
     block_id
         = (vertex_at_grid_corner) ? block_id : clamp(block_id + 128u, 0u, 255u);
@@ -126,6 +149,7 @@ void update_voxel_map(uint block_id) {
         imageStore(voxel_img, ivec3(voxel_pos), uvec4(block_id, 0u, 0u, 0u));
     }
 }
+#endif
 #endif
 
 #endif // INCLUDE_LIGHTING_LPV_VOXELIZATION

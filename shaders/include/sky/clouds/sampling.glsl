@@ -3,7 +3,18 @@
 
 // Sample filtered clouds
 vec4 read_clouds_and_aurora(vec2 uv, out float apparent_distance) {
-#if defined WORLD_OVERWORLD
+#if defined WORLD_OVERWORLD && defined PHOTON_NO_COMPUTE                     \
+    && defined BLOCKY_CLOUDS
+    // Blocky clouds leave only the aurora in the clouds buffer, at sky
+    // distance. Not reading the clouds data texture frees the texture unit
+    // that the minecraft cloud texture takes in deferred shading
+    apparent_distance = 1e6;
+    vec4 result = textureLod(colortex11, uv * taau_render_scale, 0.0);
+
+    result.xyz *= clamp01(1.0 - blindness - darknessFactor);
+
+    return result;
+#elif defined WORLD_OVERWORLD
     // Soften clouds for new pixels
     float pixel_age
         = texelFetch(colortex12, ivec2(uv * view_res * taau_render_scale), 0).y;

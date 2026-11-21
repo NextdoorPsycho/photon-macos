@@ -3,6 +3,13 @@
 
 #include "voxelization.glsl"
 
+#ifdef PHOTON_LPV_ATLAS
+#include "atlas.glsl"
+
+vec3 read_lpv_linear(vec3 pos) {
+    return sample_light_atlas(light_atlas_sampler, pos);
+}
+#else
 vec3 read_lpv_linear(vec3 pos) {
     if ((frameCounter & 1) == 0) {
         return texture(light_sampler_a, pos).rgb;
@@ -10,6 +17,7 @@ vec3 read_lpv_linear(vec3 pos) {
         return texture(light_sampler_b, pos).rgb;
     }
 }
+#endif
 
 float lpv_distance_fade(vec3 scene_pos) {
     float distance_fade

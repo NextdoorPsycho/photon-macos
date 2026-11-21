@@ -82,7 +82,7 @@ mat2x3 raymarch_water_fog(
 
 #if defined SHADOW && (defined WORLD_OVERWORLD || defined WORLD_END)
         ivec2 shadow_texel = ivec2(
-            shadow_screen_pos.xy * shadowMapResolution * MC_SHADOW_QUALITY
+            shadow_screen_pos.xy * shadow_region_res * MC_SHADOW_QUALITY
         );
         float depth0 = texelFetch(shadowtex0, shadow_texel, 0).x;
         float depth1 = texelFetch(shadowtex1, shadow_texel, 0).x;

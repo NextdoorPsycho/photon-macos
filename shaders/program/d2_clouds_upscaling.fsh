@@ -84,6 +84,8 @@ uniform bool world_age_changed;
 #include "/include/utility/random.glsl"
 #include "/include/utility/space_conversion.glsl"
 
+const float clouds_offcenter_rejection = 0.25;
+
 vec4 min_of(vec4 a, vec4 b, vec4 c, vec4 d, vec4 e) {
     return min(a, min(b, min(c, min(d, e))));
 }
@@ -298,7 +300,12 @@ void main() {
 
     // Depth at the previous position
     float history_depth
-        = 1.0 - max_of(textureGather(colortex14, previous_uv_clamped, 0));
+        = 1.0
+        - max_of(textureGather(
+            colortex14,
+            previous_uv_clamped * taau_render_scale,
+            0
+        ));
 
     // Get distance to terrain in the previous frame
     float distance_to_terrain_squared = length_squared(screen_to_view_space(
@@ -382,7 +389,13 @@ void main() {
         = 1.0 - abs(fract(previous_uv * view_res) * 2.0 - 1.0);
     float offcenter_rejection
         = sqrt(pixel_center_offset.x * pixel_center_offset.y);
-    offcenter_rejection = mix(1.0, offcenter_rejection, history_weight);
+    // At full strength a turning camera lets the one freshly traced pixel of
+    // each checkerboard cell through unblended, which shows as speckle
+    offcenter_rejection = mix(
+        1.0,
+        offcenter_rejection,
+        clouds_offcenter_rejection * history_weight
+    );
 
     history_weight *= offcenter_rejection;
 #endif

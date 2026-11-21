@@ -19,12 +19,17 @@
 
 layout(location = 0) out vec3 fragment_color;
 
-/* RENDERTARGETS: 0 */
+// Second write of the clouds history, unchanged (see Buffer Flips in
+// shaders.properties)
+layout(location = 1) out vec4 clouds_history;
+layout(location = 2) out vec3 clouds_data;
+
+/* RENDERTARGETS: 0,11,12 */
 
 #ifdef BLOOMY_FOG
-layout(location = 1) out float bloomy_fog;
+layout(location = 3) out float bloomy_fog;
 
-/* RENDERTARGETS: 0,3 */
+/* RENDERTARGETS: 0,11,12,3 */
 #endif
 
 in vec2 uv;
@@ -47,8 +52,8 @@ uniform sampler2D colortex0; // scene color
 uniform sampler2D colortex3; // refraction data
 uniform sampler2D colortex4; // sky map
 uniform sampler2D colortex5; // scene history
-uniform sampler2D colortex6; // volumetric fog scattering
-uniform sampler2D colortex7; // volumetric fog transmittance
+uniform sampler2D colortex7; // volumetric fog scattering
+uniform sampler2D colortex18; // volumetric fog transmittance
 uniform sampler2D colortex11; // clouds history
 uniform sampler2D colortex12; // clouds data
 uniform sampler2D colortex13; // rendered translucent layer
@@ -215,9 +220,17 @@ void main() {
     vec4 refraction_data = texelFetch(colortex3, texel, 0);
     vec4 translucent_color = texelFetch(colortex13, texel, 0);
 
+    clouds_history = texelFetch(colortex11, texel, 0);
+    clouds_data = texelFetch(colortex12, texel, 0).rgb;
+
 #if defined VL || defined LPV_VL
-    vec3 fog_transmittance = smooth_filter(colortex6, uv).rgb;
-    vec3 fog_scattering = smooth_filter(colortex7, uv).rgb;
+    vec2 fog_uv = uv * taau_render_scale;
+#ifdef TAAU
+    // Keep the filter taps inside the rendered corner of the buffer
+    fog_uv = min(fog_uv, taau_render_scale - view_pixel_size);
+#endif
+    vec3 fog_transmittance = smooth_filter(colortex18, fog_uv).rgb;
+    vec3 fog_scattering = smooth_filter(colortex7, fog_uv).rgb;
 #endif
 
     // LoD mod support
