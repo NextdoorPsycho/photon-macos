@@ -6,9 +6,11 @@
 // The voxel volume is stored as 2D atlases: one N x N tile per Y slice, with X
 // and Z inside the tile.
 //
-//   Voxel atlas: block IDs, in shadowcolor1. It occupies a strip 8 tiles wide
-//     on the right of the shadow map. The shadow projection is squeezed into
-//     the square to its left (see shadow_region_res in shadows/distortion.glsl)
+//   Voxel atlas: block IDs, in the red channel of shadowcolor0. It occupies a
+//     strip 8 tiles wide on the right of the shadow map. The shadow projection
+//     is squeezed into the square to its left (see shadow_region_res in
+//     shadows/distortion.glsl). A second shadow color buffer would cost two
+//     more full size clears per frame: Iris clears both textures of each one
 //   Light atlas: propagated light, in colortex17, 16 tiles wide, above the
 //     rows reserved for the cloud shadow map copy. Alpha remembers each
 //     voxel's block ID, since the voxel atlas is only partly filled per frame
@@ -21,7 +23,7 @@
 #include "voxelization.glsl"
 
 #define light_atlas_sampler colortex17
-#define voxel_atlas_sampler shadowcolor1
+#define voxel_atlas_sampler shadowcolor0
 
 const int voxel_atlas_tiles_x = 8;
 const int light_atlas_tiles_x = 16;
@@ -29,13 +31,27 @@ const int light_atlas_tiles_x = 16;
 // The shadow pass voxelizes on two frames out of this many
 const int voxel_frame_period = 8;
 const int voxel_frame_unlit = 3; // quads facing away from the light
-const int voxel_frame_lit = 7; // quads facing the light
 
 // Position of a frame in that cycle. Iris can advance frameCounter by two per
 // frame, so the cycle runs on half the counter: no frame is skipped that way,
 // at worst each one comes twice
 int voxel_frame(int frame_counter) {
     return (frame_counter >> 1) % voxel_frame_period;
+}
+
+// The step on which a block gives up its quads that face the light. Those are
+// the faces the shadow map shows, so taking every block's on one frame moved
+// all soft shadows at once, several times a second. Each block gets its own
+// step instead, from its world position, and never voxel_frame_unlit: with
+// both halves gone the block would cast nothing
+int voxel_frame_lit(ivec3 voxel_pos) {
+    ivec3 block = voxel_pos - voxel_volume_size / 2
+        - ivec3(get_voxel_volume_center(gbufferModelViewInverse[2].xyz))
+        + ivec3(floor(cameraPosition));
+    int phase = (block.x * 3 + block.y * 5 + block.z * 7) % 7;
+    phase += phase < 0 ? 7 : 0;
+
+    return (voxel_frame_unlit + 1 + phase) % voxel_frame_period;
 }
 
 const ivec2 voxel_atlas_origin
@@ -51,6 +67,12 @@ const ivec2 light_atlas_tiles_size = ivec2(
     light_atlas_tiles_x * lpv_atlas_n,
     (lpv_atlas_n / light_atlas_tiles_x) * lpv_atlas_n
 );
+
+// Second set of tiles, above the light: xyz is the offset in blocks from the
+// voxel to the light source that lights it most, alpha is 1 where one is known
+// (see update_light_source() in program/lpv/floodfill.fsh)
+const ivec2 light_atlas_source_origin
+    = light_atlas_origin + ivec2(0, light_atlas_tiles_size.y);
 
 ivec2 voxel_to_atlas(ivec3 voxel_pos, int tiles_x) {
     return voxel_pos.xz
@@ -71,6 +93,9 @@ ivec3 atlas_to_voxel(ivec2 texel, int tiles_x) {
 //   most frames  every quad casts, nothing is voxelized
 //   one frame    quads facing away from the light are voxelized
 //   one frame    quads facing the light are voxelized
+//
+// Light sources that fill their block are the exception: their quads facing
+// away from the light are voxelized on every frame but the last of these.
 //
 // Solid geometry is closed, so either half of its faces casts the same shadow,
 // and the two voxel frames together reach every block that has a face at all.
@@ -99,6 +124,17 @@ bool redirect_to_voxel_atlas(uint block_id) {
         return false;
     }
 
+    // Quads inside the block (plants, panes, carpets, ladders) are not part of
+    // a closed shape, so nothing else casts their shadow on the frame they are
+    // taken away, and the shadow flickers. They cannot mark a full block
+    // either, so only light sources give theirs up. The distance from the
+    // block centre along the normal is the same for the whole quad
+    bool on_block_face = abs(dot(at_midBlock.xyz, gl_Normal)) > 31.0;
+
+    if (!on_block_face && !is_light_emitting_block) {
+        return false;
+    }
+
 #if !defined WORLD_NETHER
     // The shadow view looks along -Z, so its Z axis points at the light
     bool faces_light = dot(gl_Normal, shadowModelViewInverse[2].xyz) > 0.0;
@@ -112,7 +148,18 @@ bool redirect_to_voxel_atlas(uint block_id) {
 #else
     int frame = voxel_frame(frameCounter);
 
-    if (frame != (faces_light ? voxel_frame_lit : voxel_frame_unlit)) {
+    // Light sources also voxelize their far faces on the frames in between,
+    // so that placing, breaking or switching one shows at once. Only faces on
+    // the outside of the block: those belong to closed shapes, whose near
+    // faces cast the same shadow, while a torch needs all of its planes. The
+    // distance from the block centre along the normal is the same for the
+    // whole quad. On voxel_frame_lit the far faces cast instead
+    int frame_lit = voxel_frame_lit(ivec3(voxel_pos));
+    bool always_voxelized = is_light_emitting_block && on_block_face
+        && !faces_light && frame != frame_lit;
+
+    if (!always_voxelized
+        && frame != (faces_light ? frame_lit : voxel_frame_unlit)) {
         return false;
     }
 #endif
@@ -146,8 +193,9 @@ bool redirect_to_voxel_atlas(uint block_id) {
         - 1.0;
 
     // Full blocks get the nearer depth, so they win the depth test over a
-    // transparent light source written to the same voxel
-    gl_Position = vec4(ndc, vertex_at_grid_corner ? -0.75 : -0.25, 1.0);
+    // transparent light source written to the same voxel. Both sit at the
+    // near plane, in front of any shadow caster that reaches into the strip
+    gl_Position = vec4(ndc, vertex_at_grid_corner ? -0.999 : -0.998, 1.0);
 
     return true;
 }

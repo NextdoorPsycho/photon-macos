@@ -34,7 +34,11 @@ float clouds_cumulus_altitude_shaping(float density, float altitude_fraction) {
     return density;
 }
 
-float clouds_cumulus_density(vec3 pos) {
+// RMS of the swirley worley texture: stands in for the fine detail noise
+// without changing its mean erosion
+const float clouds_cumulus_detail_rms = 0.533;
+
+float clouds_cumulus_density(vec3 pos, bool fine_detail) {
     float r = length(pos);
 
 #if defined CLOUDS_USE_LOCAL_COVERAGE_MAP
@@ -79,11 +83,8 @@ float clouds_cumulus_density(vec3 pos) {
     // 3D worley noise for detail
     float worley_0
         = texture(SAMPLER_WORLEY_BUBBLY, (pos + 0.2 * wind) * 0.0009).x;
-    float worley_1
-        = texture(SAMPLER_WORLEY_SWIRLEY, (pos + 0.4 * wind) * 0.005).x;
 #else
     const float worley_0 = 0.5;
-    const float worley_1 = 0.5;
 #endif
 
     float detail_fade = 0.20 * smoothstep(0.85, 1.0, 1.0 - altitude_fraction)
@@ -91,6 +92,23 @@ float clouds_cumulus_density(vec3 pos) {
 
     density -= clouds_params.l0_detail_weights.x * sqr(worley_0)
         * dampen(clamp01(1.0 - density));
+
+    // The second noise only erodes further, so skip its lookup once the
+    // first has emptied the sample
+    if (density <= 0.0) {
+        return 0.0;
+    }
+
+#if !defined PROGRAM_PREPARE
+    float worley_1 = clouds_cumulus_detail_rms;
+    if (fine_detail) {
+        worley_1
+            = texture(SAMPLER_WORLEY_SWIRLEY, (pos + 0.4 * wind) * 0.005).x;
+    }
+#else
+    const float worley_1 = 0.5;
+#endif
+
     density -= clouds_params.l0_detail_weights.y * sqr(worley_1)
         * dampen(clamp01(1.0 - density)) * detail_fade;
 
@@ -106,6 +124,10 @@ float clouds_cumulus_density(vec3 pos) {
     density *= 0.1 + 0.9 * smoothstep(0.2, 0.7, altitude_fraction);
 
     return density;
+}
+
+float clouds_cumulus_density(vec3 pos) {
+    return clouds_cumulus_density(pos, true);
 }
 
 float clouds_cumulus_optical_depth(
@@ -125,7 +147,12 @@ float clouds_cumulus_optical_depth(
 
     for (uint i = 0u; i < step_count; ++i, ray_pos += ray_step.xyz) {
         ray_step *= step_growth;
-        optical_depth += clouds_cumulus_density(ray_pos + ray_step.xyz * dither)
+        // The fine noise repeats every 200 m; a longer step only aliases it
+        bool fine_detail = ray_step.w < 100.0;
+        optical_depth += clouds_cumulus_density(
+                             ray_pos + ray_step.xyz * dither,
+                             fine_detail
+                         )
             * ray_step.w;
     }
 

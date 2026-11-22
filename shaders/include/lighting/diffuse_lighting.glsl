@@ -139,11 +139,25 @@ vec3 get_block_lighting(
         * (blocklight_scale * blocklight_color);
 
 #ifdef COLORED_LIGHTS
+#if COLORED_LIGHTS_DAYLIGHT_BOOST > 0 && defined WORLD_OVERWORLD
+    // How much daylight the surface gets: its sky light, and the sky's
+    // brightness (about 0.7 by day and 0.06 at night)
+    float daylight = sqr(light_levels.y)
+        * smoothstep(
+            0.1,
+            0.5,
+            dot(ambient_color, luminance_weights_rec2020)
+        );
+#else
+    const float daylight = 0.0;
+#endif
+
     lighting += get_lpv_blocklight(
         scene_pos,
         flat_normal,
         mc_blocklight,
-        ao * directional_lighting
+        ao * directional_lighting,
+        daylight
     );
 #else
     lighting += mc_blocklight;

@@ -71,14 +71,13 @@ vec3 shadow_basic(vec3 shadow_screen_pos) {
     ivec2 texel = ivec2(shadow_screen_pos.xy * shadow_map_res);
 
     float depth = read_shadow_depth0(texel);
-    vec3 color = texelFetch(shadowcolor0, texel, 0).rgb * 4.0;
+    vec3 color = read_shadow_color0(texel) * 4.0;
     float weight = step(depth, shadow_screen_pos.z);
 
     vec3 averageColor = vec3(0.0);
     for (int i = 0; i < 9; ++i) {
         averageColor
-            += texelFetch(shadowcolor0, texel + blur_kernel_offsets_3x3[i], 0)
-                   .rgb;
+            += read_shadow_color0(texel + blur_kernel_offsets_3x3[i]);
     }
     // hide sunlight seams between colored shadow and opaque shadows
     weight *= step(eps, max_of(averageColor));
@@ -142,7 +141,7 @@ vec3 shadow_pcf(
 
         float depth = read_shadow_depth0(texel);
 
-        vec3 color = texelFetch(shadowcolor0, texel, 0).rgb;
+        vec3 color = read_shadow_color0(texel);
         color = mix(
             vec3(1.0),
             4.0 * color,

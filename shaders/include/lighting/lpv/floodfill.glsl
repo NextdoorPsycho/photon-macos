@@ -45,44 +45,30 @@ vec3 gather_light(sampler3D light_sampler, ivec3 pos) {
 
     const float center_weight = 1.05;
 
-    return (texelFetch(light_sampler, pos, 0).rgb * center_weight
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[0]),
-                  0
-            )
-                  .xyz
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[1]),
-                  0
-            )
-                  .xyz
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[2]),
-                  0
-            )
-                  .xyz
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[3]),
-                  0
-            )
-                  .xyz
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[4]),
-                  0
-            )
-                  .xyz
-            + texelFetch(
-                  light_sampler,
-                  clamp_to_voxel_volume(pos + face_offsets[5]),
-                  0
-            )
-                  .xyz)
-        * rcp(7.0 * center_weight);
+    vec3 center_light = texelFetch(light_sampler, pos, 0).rgb;
+    vec3 light = center_light * center_weight;
+
+    for (int i = 0; i < 6; ++i) {
+        vec3 neighbor_light = texelFetch(
+                                  light_sampler,
+                                  clamp_to_voxel_volume(pos + face_offsets[i]),
+                                  0
+        )
+                                  .rgb;
+
+#if COLORED_LIGHTS_BOUNCE > 0
+        // A neighbor without any light is a solid block, which hands back
+        // part of what reaches it. Unlit air ahead of the light does the same
+        // for the few frames until it is reached
+        if (max_of(neighbor_light) <= 0.0) {
+            neighbor_light = center_light * (0.01 * float(COLORED_LIGHTS_BOUNCE));
+        }
+#endif
+
+        light += neighbor_light;
+    }
+
+    return light * rcp(7.0 * center_weight);
 }
 
 void update_lpv(writeonly image3D light_img, sampler3D light_sampler) {

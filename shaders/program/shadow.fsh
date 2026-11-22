@@ -12,7 +12,7 @@
 #include "/include/global.glsl"
 
 #if defined PHOTON_SHADOW_DEPTH0_IN_COLOR
-// Alpha carries this fragment's depth, see read_shadow_depth0()
+// Tint and depth packed together, see pack_shadow_color_depth()
 layout(location = 0) out vec4 shadowcolor0_packed;
 
 #if defined COLORWHEEL
@@ -26,12 +26,14 @@ layout(location = 0) out vec4 shadowcolor0_out;
 layout(location = 0) out vec3 shadowcolor0_out;
 #endif
 
-#ifdef PHOTON_LPV_ATLAS
-layout(location = 1) out vec4 shadowcolor1_out;
-
-/* RENDERTARGETS: 0,1 */
-#else
 /* RENDERTARGETS: 0 */
+
+// Solid terrain is opaque whatever its texture holds, so its shadow needs no
+// texture lookup. Without a discard in the program the GPU can also reject
+// hidden fragments before shading them
+#if defined PHOTON_NO_COMPUTE && defined PROGRAM_SHADOW_SOLID                  \
+    && !defined COLORWHEEL
+#define SHADOW_OPAQUE_ONLY
 #endif
 
 in vec2 uv;
@@ -77,12 +79,20 @@ uniform float rainStrength;
 uniform vec2 taa_offset;
 uniform vec3 light_dir;
 
+#ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
+uniform int frameCounter;
+#endif
+
 #include "/include/surface/water_normal.glsl"
 #include "/include/utility/color.glsl"
 
-#ifdef PHOTON_LPV_ATLAS
-// For shadow_region_res
+#if defined PHOTON_LPV_ATLAS || defined PHOTON_SHADOW_DEPTH0_IN_COLOR
+// For shadow_region_res and pack_shadow_color_depth()
 #include "/include/lighting/shadows/distortion.glsl"
+#endif
+
+#ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
+#include "/include/utility/dithering.glsl"
 #endif
 
 const float air_n = 1.000293; // for 0°C and 1 atm
@@ -184,28 +194,38 @@ void shadow_fragment() {
         bool is_light_emitting_block = voxel_id >= 256;
 
         if (!is_full_block && !is_light_emitting_block) {
+#ifdef SHADOW_OPAQUE_ONLY
+            // Not a voxel: written as air, which is what the texel was cleared
+            // to. Any voxel of the same block is nearer and replaces it
+            shadowcolor0_out = vec3(0.0);
+            return;
+#else
             discard;
+#endif
         }
 
         // Mark transparent light sources
         int block_id = (voxel_id & 255) + (is_full_block ? 0 : 128);
 
-#if defined COLORWHEEL
-        shadowcolor0_out = vec4(0.0);
-#else
-        shadowcolor0_out = vec3(0.0);
-#endif
-        shadowcolor1_out = vec4(float(block_id) * rcp(255.0), 0.0, 0.0, 1.0);
+        // The strip of shadowcolor0 is the voxel atlas, block ID in red
+        shadowcolor0_out.rgb = vec3(float(block_id) * rcp(255.0), 0.0, 0.0);
         return;
     }
 #endif
 
+#ifndef SHADOW_OPAQUE_ONLY
     // Keep shadow geometry out of the voxel atlas strip
     if (any(greaterThanEqual(gl_FragCoord.xy, vec2(shadow_region_res)))) {
         discard;
     }
+#endif
+#endif
 
-    shadowcolor1_out = vec4(0.0);
+#ifdef SHADOW_OPAQUE_ONLY
+    // Opaque casters may spill into the voxel atlas strip: they write air and
+    // lie behind every voxel (see the depths in redirect_to_voxel_atlas())
+    shadowcolor0_out = vec3(0.0);
+    return;
 #endif
 
 #ifndef COLORWHEEL
@@ -260,6 +280,21 @@ void main() {
     shadow_fragment();
 
 #ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
-    shadowcolor0_packed = vec4(shadowcolor0_out.rgb, gl_FragCoord.z);
+#ifdef SHADOW_VOXEL_REDIRECT
+    // Voxel atlas texels hold the block ID as it is. That goes for opaque
+    // casters that spill into the strip too: their depth bits would read as
+    // block IDs
+    if (voxel_id != 0
+        || any(greaterThanEqual(gl_FragCoord.xy, vec2(shadow_region_res)))) {
+        shadowcolor0_packed = vec4(shadowcolor0_out.rgb, 0.0);
+        return;
+    }
+#endif
+
+    shadowcolor0_packed = pack_shadow_color_depth(
+        shadowcolor0_out.rgb,
+        gl_FragCoord.z,
+        interleaved_gradient_noise(gl_FragCoord.xy, frameCounter)
+    );
 #endif
 }

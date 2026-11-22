@@ -125,7 +125,7 @@ mat2x3 raymarch_air_fog(
         float depth0 = texelFetch(shadowtex0, shadow_texel, 0).x;
         float depth1 = texelFetch(shadowtex1, shadow_texel, 0).x;
         vec3 color
-            = clamp01(texelFetch(shadowcolor0, shadow_texel, 0).rgb * 4.0);
+            = clamp01(read_shadow_color0(shadow_texel) * 4.0);
         float color_weight
             = step(depth0, shadow_screen_pos.z) * step(eps, max_of(color));
 

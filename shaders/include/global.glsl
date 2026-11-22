@@ -66,7 +66,7 @@
 
 // The same drivers allow 16 textures per fragment shader, which deferred
 // shading exceeds. Two are saved: the depth of translucent shadow casters is
-// stored in shadowcolor0's alpha so shadowtex0 need not be bound, and with
+// packed into shadowcolor0 so shadowtex0 need not be bound, and with
 // colored lights the cloud shadow map is copied into the light atlas texture
 #if defined PHOTON_NO_COMPUTE && defined SHADOW_COLOR
 #define PHOTON_SHADOW_DEPTH0_IN_COLOR

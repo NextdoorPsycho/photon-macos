@@ -46,13 +46,12 @@ const bool colortex18Clear = false;
 #ifdef PHOTON_LPV_ATLAS
 const int colortex17Format = RGBA16F;        // light atlas | colored light volume as 2D slices, alpha = voxel memory (prepare1 -> c0), see lpv/atlas.glsl
 const bool colortex17Clear = false;
-const int shadowcolor1Format = RGBA8;        // shadow res  | voxel atlas in the strip right of the shadow region
-const vec4 shadowcolor1ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 #endif
 
-#ifdef PHOTON_SHADOW_DEPTH0_IN_COLOR
-const int shadowcolor0Format = RGBA16;       // shadow res  | shadow tint, alpha = depth of nearest caster (replaces shadowtex0 lookups)
-#endif
+// Iris reads buffer formats whatever the preprocessor conditions around them,
+// so this one holds on every path. Without compute shaders tint and depth of
+// the nearest caster share the texel (see pack_shadow_color_depth())
+const int shadowcolor0Format = RGBA8;        // shadow res  | shadow tint; GL 4.1: packed with caster depth (replaces shadowtex0 lookups), voxel atlas in the strip right of the shadow region
 
 #ifdef VOXY 
 // Ty Cortex for the extra color textures! 

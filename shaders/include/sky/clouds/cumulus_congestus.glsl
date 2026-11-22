@@ -92,12 +92,8 @@ float clouds_cumulus_congestus_density(vec3 pos) {
     // 3D worley noise for detail
     float worley_0
         = texture(SAMPLER_WORLEY_SWIRLEY, (pos + 0.2 * wind) * 0.00005).x;
-    float worley_1
-        = texture(SAMPLER_WORLEY_SWIRLEY, (pos + 0.4 * wind) * 0.00023).x;
 #else
     const float worley_0 = 0.5;
-
-    const float worley_1 = 0.5;
 #endif
 
     float detail_fade = 0.20 * smoothstep(0.85, 1.0, 1.0 - altitude_fraction)
@@ -105,6 +101,20 @@ float clouds_cumulus_congestus_density(vec3 pos) {
 
     density -= (7.0 * CLOUDS_CUMULUS_CONGESTUS_DETAIL_STRENGTH)
         * sqr(clamp01(1.0 - density)) * cube(worley_0) * sqr(altitude_fraction);
+
+    // The second noise only erodes further, so skip its lookup once the
+    // first has emptied the sample
+    if (density <= 0.0) {
+        return 0.0;
+    }
+
+#ifndef PROGRAM_PREPARE
+    float worley_1
+        = texture(SAMPLER_WORLEY_SWIRLEY, (pos + 0.4 * wind) * 0.00023).x;
+#else
+    const float worley_1 = 0.5;
+#endif
+
     density -= (0.2 * CLOUDS_CUMULUS_CONGESTUS_DETAIL_STRENGTH) * sqr(worley_1)
         * dampen(clamp01(1.0 - density))
         * dampen(dampen(clamp01(detail_fade + 0.5 * sqr(altitude_fraction))));

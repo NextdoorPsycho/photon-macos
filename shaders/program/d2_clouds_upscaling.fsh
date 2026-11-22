@@ -380,6 +380,21 @@ void main() {
         ambient_scattering = history_data.z;
     }
 
+    // While the camera moves, the history no longer lines up with the
+    // checkerboard, and a freshly traced pixel between reprojected ones shows
+    // as a comb or hatch pattern along cloud edges. There every pixel takes a
+    // share of the new samples instead, upsampled bilinearly from where they
+    // were traced
+    float clouds_motion = clamp01(
+        2.0 * length((uv - previous_uv) * view_res * taau_render_scale)
+    );
+    vec2 spread_uv
+        = ((vec2(dst_texel - offset_1) + 0.5) / float(CLOUDS_TEMPORAL_UPSCALING)
+           + 0.5)
+        / vec2(textureSize(colortex9, 0));
+    vec4 current_spread = textureLod(colortex9, spread_uv, 0.0);
+    float ambient_spread = textureLod(colortex10, spread_uv, 0.0).y;
+
     float pixel_age = max0(history_data.y) * float(!disocclusion);
     float history_weight = 1.0 - rcp(max(pixel_age - checkerboard_area, 1.0));
 
@@ -405,4 +420,18 @@ void main() {
         = mix(apparent_distance, apparent_distance_history, history_weight);
     clouds_data.y = min(++pixel_age, CLOUDS_ACCUMULATION_LIMIT);
     clouds_data.z = mix(ambient_scattering, history_data.z, history_weight);
+
+    if (!disocclusion) {
+        const float spread_rate = 0.1;
+        clouds_history = mix(
+            clouds_history,
+            max0(mix(history, current_spread, spread_rate)),
+            clouds_motion
+        );
+        clouds_data.z = mix(
+            clouds_data.z,
+            mix(history_data.z, ambient_spread, spread_rate),
+            clouds_motion
+        );
+    }
 }
